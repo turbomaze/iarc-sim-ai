@@ -1,0 +1,11 @@
+body {
+  background: #EFEFEF;
+}
+
+.canvas-container {
+  text-align: center;
+}
+
+hr.bottom {
+  margin: 0.75rem 0;
+}
