@@ -45,9 +45,7 @@ var IARCSim = (function() {
       this.t2 = 0; //time since last wiggle
     }
     Roomba.prototype.update = function(dt) {
-      var ds = this.s * dt/1000;
-      this.position[0] += ds * this.direc[0];
-      this.position[1] += ds * this.direc[1];
+      this.move(dt);
       this.t1 += dt;
       if (this.t1 > RAND_ANG_FREQ) {
         this.t1 = 0;
@@ -63,6 +61,11 @@ var IARCSim = (function() {
       var currAng = Math.atan2(this.direc[1], this.direc[0]);
       this.direc[0] = Math.cos(currAng + theta);
       this.direc[1] = Math.sin(currAng + theta);
+    };
+    Roomba.prototype.move = function(dt) {
+      var ds = this.s * dt/1000;
+      this.position[0] += ds * this.direc[0];
+      this.position[1] += ds * this.direc[1];
     };
     Roomba.prototype.flip = function() {
       this.rotateByAngle(Math.PI);
@@ -102,6 +105,19 @@ var IARCSim = (function() {
       lastRenderTime = t;
 
       roombas.map(drawRoomba);
+      for (var ai = 0; ai < roombas.length; ai++) {
+        for (var bi = ai+1; bi < roombas.length; bi++) {
+          if (mag([
+            roombas[ai].position[0] - roombas[bi].position[0],
+            roombas[ai].position[1] - roombas[bi].position[1]
+          ]) <= roombas[ai].r + roombas[bi].r) { //colliding
+            roombas[ai].flip();
+            roombas[ai].move(1000/60); //assume 60fps
+            roombas[bi].flip();
+            roombas[bi].move(1000/60); //assume 60fps
+          }
+        }
+      }
       roombas.map(function(roomba) {
         roomba.update(dt);
       });
@@ -111,17 +127,16 @@ var IARCSim = (function() {
 
     /********************
      * helper functions */
-    function norm(a) {
-      var mag = Math.sqrt(a.reduce(function(acc, curr) {
+    function mag(a) {
+      return Math.sqrt(a.reduce(function(acc, curr) {
         return acc + curr*curr;
       }, 0));
-      return a.map(function(comp) {
-        return comp/mag;
-      });
     }
-
-    function updateRoomba(roomba, time) {
-
+    function norm(a) {
+      var magnitude = mag(a);
+      return a.map(function(comp) {
+        return comp/magnitude;
+      });
     }
 
     function drawRoomba(roomba) {
