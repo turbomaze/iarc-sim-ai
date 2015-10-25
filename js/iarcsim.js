@@ -15,8 +15,11 @@ var IARCSim = (function() {
     DIMS[1] = DIMS[0]; //force squareness
     var N = 10; //number of roombas
     var SPEEDUP = 12;
+    var R = 0.0085*DIMS[0]; //radius of the Roombas
+    var S = 0.0165*DIMS[0]*SPEEDUP; //speed in px per second
     var FLIP_FREQ = 20*1000/SPEEDUP; //every 20s
     var RAND_ANG_FREQ = 5*1000/SPEEDUP; //every 5s
+    var ANG_SPEED = 1.38; //radians per second
     var DTHETA = 40*Math.PI/180; //how much it wiggles by
 
     /****************
@@ -29,8 +32,6 @@ var IARCSim = (function() {
     /*************
      * constants */
     var CENTER = [DIMS[0]/2, DIMS[1]/2];
-    var R = 0.0085*DIMS[0]; //radius of the Roombas
-    var S = 0.0165*DIMS[0]*SPEEDUP; //px per second
     var INIT_D = 0.05*500;
 
     /***********
@@ -46,6 +47,7 @@ var IARCSim = (function() {
       this.s = S; //speed
       this.t1 = 0; //time since last flip
       this.t2 = 0; //time since last wiggle
+      this.angleLeftToMove = 0; //how much this UAV needs to rotate
     }
     Roomba.prototype.update = function(dt) {
       this.move(dt);
@@ -65,13 +67,23 @@ var IARCSim = (function() {
       this.direc[0] = Math.cos(currAng + theta);
       this.direc[1] = Math.sin(currAng + theta);
     };
-    Roomba.prototype.move = function(dt) {
-      var ds = this.s * dt/1000;
-      this.position[0] += ds * this.direc[0];
-      this.position[1] += ds * this.direc[1];
+    Roomba.prototype.queueRotation = function(theta) {
+      this.angleLeftToMove = theta;
+    };
+    Roomba.prototype.move = function(dt, forceTranslation) {
+      if (this.angleLeftToMove === 0 || forceTranslation) {
+        var ds = this.s * dt/1000;
+        this.position[0] += ds * this.direc[0];
+        this.position[1] += ds * this.direc[1];
+      } else {
+        var dtheta = ANG_SPEED * SPEEDUP * dt/1000;
+        this.rotateByAngle(dtheta);
+        this.angleLeftToMove -= dtheta;
+        if (this.angleLeftToMove < 0) this.angleLeftToMove = 0;
+      }
     };
     Roomba.prototype.flip = function() {
-      this.rotateByAngle(Math.PI);
+      this.queueRotation(Math.PI);
     };
     Roomba.prototype.randomizeAngle = function() {
       var thetaChange = -DTHETA/2 + DTHETA*Math.random();
@@ -85,9 +97,14 @@ var IARCSim = (function() {
     };
     Roomba.prototype.collideWith = function(roomba) {
       this.flip();
-      this.move(1000/60); //assume 60fps
+      this.rotateByAngle(Math.PI);
+      this.move(1000/60, true); //assume 60fps
+      this.rotateByAngle(Math.PI); //undo the rotation
+
       roomba.flip();
-      roomba.move(1000/60); //assume 60fps
+      roomba.rotateByAngle(Math.PI);
+      roomba.move(1000/60, true); //assume 60fps
+      roomba.rotateByAngle(Math.PI); //undo the rotation
     };
 
     /******************
