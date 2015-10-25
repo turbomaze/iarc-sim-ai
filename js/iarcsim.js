@@ -1,7 +1,7 @@
 /******************\
 | IARC Simulation  |
 | @author Anthony  |
-| @version 0.1     |
+| @version 0.2     |
 | @date 2015/10/24 |
 | @edit 2015/10/24 |
 \******************/
