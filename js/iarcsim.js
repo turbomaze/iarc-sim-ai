@@ -13,6 +13,9 @@ var IARCSim = (function() {
      * config */
     var DIMS = [500, 500];
     var N = 10;
+    var FLIP_FREQ = 2*1000; //every 20s
+    var RAND_ANG_FREQ = 0.5*1000; //every 5s
+    var DTHETA = 45*Math.PI/180; //how much it wiggles by
 
     /****************
      * working vars */
@@ -23,8 +26,8 @@ var IARCSim = (function() {
     /*************
      * constants */
     var CENTER = [DIMS[0]/2, DIMS[1]/2];
-    var R = 7; //radius of the Roombas
-    var S = 20; //px per second
+    var R = 8.75; //radius of the Roombas
+    var S = 7.5*10; //px per second
     var INIT_D = 50;
 
     /***********
@@ -38,7 +41,36 @@ var IARCSim = (function() {
       ]);
       this.r = R; //radius
       this.s = S; //speed
+      this.t1 = 0; //time since last flip
+      this.t2 = 0; //time since last wiggle
     }
+    Roomba.prototype.update = function(dt) {
+      var ds = this.s * dt/1000;
+      this.position[0] += ds * this.direc[0];
+      this.position[1] += ds * this.direc[1];
+      this.t1 += dt;
+      if (this.t1 > RAND_ANG_FREQ) {
+        this.t1 = 0;
+        this.randomizeAngle();
+      }
+      this.t2 += dt;
+      if (this.t2 > FLIP_FREQ) {
+        this.t2 = 0;
+        this.flip();
+      }
+    };
+    Roomba.prototype.rotateByAngle = function(theta) {
+      var currAng = Math.atan2(this.direc[1], this.direc[0]);
+      this.direc[0] = Math.cos(currAng + theta);
+      this.direc[1] = Math.sin(currAng + theta);
+    };
+    Roomba.prototype.flip = function() {
+      this.rotateByAngle(Math.PI);
+    };
+    Roomba.prototype.randomizeAngle = function() {
+      var thetaChange = -DTHETA/2 + DTHETA*Math.random();
+      this.rotateByAngle(thetaChange);
+    };
 
     /******************
      * work functions */
@@ -71,7 +103,7 @@ var IARCSim = (function() {
 
       roombas.map(drawRoomba);
       roombas.map(function(roomba) {
-        updateRoomba(roomba, dt);
+        roomba.update(dt);
       });
 
       requestAnimationFrame(render);
@@ -89,9 +121,7 @@ var IARCSim = (function() {
     }
 
     function updateRoomba(roomba, time) {
-      var ds = roomba.s * time/1000;
-      roomba.position[0] += ds * roomba.direc[0];
-      roomba.position[1] += ds * roomba.direc[1];
+
     }
 
     function drawRoomba(roomba) {
