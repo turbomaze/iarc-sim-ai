@@ -14,7 +14,7 @@ var IARCSim = (function() {
     var DIMS = [500, 0];
     DIMS[1] = DIMS[0]; //force squareness
     var N = 10; //number of roombas
-    var SPEEDUP = 10;
+    var SPEEDUP = 12;
     var FLIP_FREQ = 20*1000/SPEEDUP; //every 20s
     var RAND_ANG_FREQ = 5*1000/SPEEDUP; //every 5s
     var DTHETA = 40*Math.PI/180; //how much it wiggles by
@@ -23,6 +23,7 @@ var IARCSim = (function() {
      * working vars */
     var canvas, ctx;
     var roombas;
+    var globalTime;
     var lastRenderTime;
 
     /*************
@@ -76,6 +77,18 @@ var IARCSim = (function() {
       var thetaChange = -DTHETA/2 + DTHETA*Math.random();
       this.rotateByAngle(thetaChange);
     };
+    Roomba.prototype.distTo = function(roomba) {
+      return mag([
+        this.position[0] - roomba.position[0],
+        this.position[1] - roomba.position[1]
+      ]);
+    };
+    Roomba.prototype.collideWith = function(roomba) {
+      this.flip();
+      this.move(1000/60); //assume 60fps
+      roomba.flip();
+      roomba.move(1000/60); //assume 60fps
+    };
 
     /******************
      * work functions */
@@ -91,49 +104,84 @@ var IARCSim = (function() {
         var x = INIT_D*Math.cos(theta);
         var y = INIT_D*Math.sin(theta);
         roombas.push(
-          new Roomba([CENTER[0]+x, CENTER[1]+y], 'red')
+          new Roomba(
+            [CENTER[0]+x, CENTER[1]+y],
+            Crush.getColorStr([
+              Math.floor(256*Math.random()),
+              Math.floor(256*Math.random()),
+              Math.floor(256*Math.random())
+            ])
+          )
         );
       }
 
+      globalTime = 0;
       lastRenderTime = +new Date();
+
+      $s('#t').innerHTML = fmtTime(0, 0);
+      $s('#num-robots').innerHTML = roombas.length;
+
       render();
     }
 
     function render() {
       clearCanvas();
 
+      //deal with time
       var t = +new Date();
       var dt = t - lastRenderTime;
       lastRenderTime = t;
+      globalTime += dt*SPEEDUP;
+      $s('#t').innerHTML = fmtTime(globalTime);
 
+      //draw their positions
       roombas.map(drawRoomba);
+
+      //collisions
       for (var ai = 0; ai < roombas.length; ai++) {
         for (var bi = ai+1; bi < roombas.length; bi++) {
-          if (mag([
-            roombas[ai].position[0] - roombas[bi].position[0],
-            roombas[ai].position[1] - roombas[bi].position[1]
-          ]) <= roombas[ai].r + roombas[bi].r) { //colliding
-            roombas[ai].flip();
-            roombas[ai].move(1000/60); //assume 60fps
-            roombas[bi].flip();
-            roombas[bi].move(1000/60); //assume 60fps
+          //collisions
+          if (roombas[ai].distTo(roombas[bi]) <= roombas[ai].r+roombas[bi].r) {
+            roombas[ai].collideWith(roombas[bi]);
           }
         }
       }
+
+      //velocity updates
       roombas.map(function(roomba) {
         roomba.update(dt);
       });
+
+      //remove those that've crossed the wall
+      for (var ai = 0; ai < roombas.length; ai++) {
+        if (roombas[ai].position[0] < roombas[ai].r ||
+            roombas[ai].position[0] > DIMS[0]-roombas[ai].r ||
+            roombas[ai].position[1] < roombas[ai].r ||
+            roombas[ai].position[1] > DIMS[1]-roombas[ai].r) {
+          roombas.splice(ai, 1);
+          $s('#num-robots').innerHTML = roombas.length;
+          ai--; //it'll get incremented and ai will remain the same
+        }
+      }
 
       requestAnimationFrame(render);
     }
 
     /********************
      * helper functions */
+    function fmtTime(t) { //t is in ms
+      var tis = t/1000;
+      var mins = Math.floor(tis/60);
+      var secs = Math.round(tis - mins*60);
+      return mins+'m '+secs+'s';
+    }
+
     function mag(a) {
       return Math.sqrt(a.reduce(function(acc, curr) {
         return acc + curr*curr;
       }, 0));
     }
+
     function norm(a) {
       var magnitude = mag(a);
       return a.map(function(comp) {
@@ -148,7 +196,7 @@ var IARCSim = (function() {
       Crush.drawLine(ctx, roomba.position, [
         roomba.position[0]+2*roomba.r*roomba.direc[0],
         roomba.position[1]+2*roomba.r*roomba.direc[1]
-      ], 'red', 2);
+      ], roomba.color, 2);
     }
 
     function clearCanvas() {
