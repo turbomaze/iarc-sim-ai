@@ -1,9 +1,13 @@
 body {
-  background: #EFEFEF;
+  background: #ECEDF1;
 }
 
 .canvas-container {
   text-align: center;
+}
+
+canvas#canvas {
+  box-shadow: 4px 4px 6px #898989;
 }
 
 hr.bottom {
