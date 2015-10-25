@@ -11,11 +11,13 @@ var IARCSim = (function() {
 
     /**********
      * config */
-    var DIMS = [500, 500];
-    var N = 10;
-    var FLIP_FREQ = 2*1000; //every 20s
-    var RAND_ANG_FREQ = 0.5*1000; //every 5s
-    var DTHETA = 45*Math.PI/180; //how much it wiggles by
+    var DIMS = [500, 0];
+    DIMS[1] = DIMS[0]; //force squareness
+    var N = 10; //number of roombas
+    var SPEEDUP = 10;
+    var FLIP_FREQ = 20*1000/SPEEDUP; //every 20s
+    var RAND_ANG_FREQ = 5*1000/SPEEDUP; //every 5s
+    var DTHETA = 40*Math.PI/180; //how much it wiggles by
 
     /****************
      * working vars */
@@ -26,9 +28,9 @@ var IARCSim = (function() {
     /*************
      * constants */
     var CENTER = [DIMS[0]/2, DIMS[1]/2];
-    var R = 8.75; //radius of the Roombas
-    var S = 7.5*10; //px per second
-    var INIT_D = 50;
+    var R = 0.0085*DIMS[0]; //radius of the Roombas
+    var S = 0.0165*DIMS[0]*SPEEDUP; //px per second
+    var INIT_D = 0.05*500;
 
     /***********
      * objects */
