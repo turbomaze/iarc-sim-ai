@@ -25,6 +25,7 @@ var IARCSim = (function() {
     var RAND_ANG_FREQ = 5*1000/SPEEDUP; //every 5s
     var ANG_SPEED = 1.38*SPEEDUP; //radians per second
     var DTHETA = 40*Math.PI/180; //how much it wiggles by
+    var ACT_ANGLE = 45*Math.PI/180; //how much it rotates upon activation
 
     /****************
      * working vars */
@@ -91,7 +92,7 @@ var IARCSim = (function() {
       this.direc[1] = Math.sin(currAng + theta);
     };
     Roomba.prototype.queueRotation = function(theta) {
-      this.angleLeftToMove = theta;
+      this.angleLeftToMove += theta;
     };
     Roomba.prototype.move = function(dt, forceTranslation) {
       if (this.angleLeftToMove === 0 || forceTranslation) {
@@ -128,6 +129,9 @@ var IARCSim = (function() {
       roomba.rotateByAngle(Math.PI);
       roomba.move(1000/60, true); //assume 60fps
       roomba.rotateByAngle(Math.PI); //undo the rotation
+    };
+    Roomba.prototype.activateMagnet = function() {
+      this.queueRotation(ACT_ANGLE);
     };
 
     /******************
@@ -235,6 +239,31 @@ var IARCSim = (function() {
       if (keys[83]) dir = [dir[0], dir[1]+1];
       dir = norm(dir);
       uav.move(dir, dt);
+
+      //uav-roomba interaction
+      if (keys[32]) {
+        //prevent this from happening many times during a key-hold
+        keys[32] = false;
+
+        //get the closest roomba
+        var closestRoomba = roombas.reduce(
+          function(closest, curr, idx) {
+            var dist = mag([
+              curr.position[0] - uav.position[0],
+              curr.position[1] - uav.position[1]
+            ]);
+            if (dist < closest[1]) return [idx, dist];
+            else return closest;
+          },
+          [-1, Infinity] //idx of closest, distance
+        );
+
+        //make sure the closest is close enough
+        if (closestRoomba[1] < Math.abs(uav.r - roombas[closestRoomba[0]].r)) {
+          //if it is, rotate it
+          roombas[closestRoomba[0]].activateMagnet();
+        }
+      }
 
       requestAnimationFrame(render);
     }
