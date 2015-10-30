@@ -14,7 +14,7 @@ var IARCSim = (function() {
     var DIMS = [500, 0];
         DIMS[1] = DIMS[0]; //force squareness
     var NUM_GRID_LINES = [20, 20]; //how many grid lines to draw in each dir
-    var SPEEDUP = 70.5;
+    var SPEEDUP = 2.3;
     var MAX_TIME = 10*60*1000; //in ms
 
     var UAV_SPEC = {
@@ -302,7 +302,7 @@ var IARCSim = (function() {
       $s('#play-again-btn-cont').style.display = 'none'; //hide it
     }
 
-    function handleRoombaCollisions() {
+    function handleRoombaRoombaCollisions() {
       for (var ai = 0; ai < roombas.length; ai++) {
         for (var bi = ai+1; bi < roombas.length; bi++) {
           //collisions
@@ -313,7 +313,7 @@ var IARCSim = (function() {
       }
     }
 
-    function handleObstacleCollisions() {
+    function handleRoombaObstacleCollisions() {
       for (var ai = 0; ai < obstacles.length; ai++) {
         var obstacle = obstacles[ai];
         for (var bi = 0; bi < roombas.length; bi++) {
@@ -321,6 +321,21 @@ var IARCSim = (function() {
           if (roombas[bi].distTo(obstacle) < roombas[bi].r + obstacle.r) {
             obstacle.collideWith(roombas[bi]);
           }
+        }
+      }
+    }
+
+    function handleUAVObstacleCollisions() {
+      for (var ai = 0; ai < obstacles.length; ai++) {
+        var obstacle = obstacles[ai];
+        if (mag([
+          uav.position[0] - obstacle.position[0],
+          uav.position[1] - obstacle.position[1]
+        ]) < uav.r + obstacle.r) {
+          //the uav collided with the obstacle!
+          points = 0;
+          gameOver = true;
+          handleEndBehavior();
         }
       }
     }
@@ -387,16 +402,6 @@ var IARCSim = (function() {
       globalTime += dt*SPEEDUP;
       $s('#t').innerHTML = fmtTime(globalTime);
 
-      //score updates
-      points += (dt*SPEEDUP)/(60*1000)*POINTS_SPEC.livingPenalty;
-      $s('#score').innerHTML = Math.round(points);
-
-      //game went on too long
-      if (globalTime > MAX_TIME) {
-        gameOver = true;
-        return handleEndBehavior();
-      }
-
       //draw the board
       drawBoard();
 
@@ -410,10 +415,13 @@ var IARCSim = (function() {
       drawEntity(uav);
 
       //roomba-roomba collisions
-      handleRoombaCollisions();
+      handleRoombaRoombaCollisions();
 
       //roomba-obstacle collisions
-      handleObstacleCollisions();
+      handleRoombaObstacleCollisions();
+
+      //uav collisions with the obstacles
+      handleUAVObstacleCollisions();
 
       //roomba velocity updates
       roombas.map(function(roomba) {
@@ -433,6 +441,16 @@ var IARCSim = (function() {
 
       //uav-roomba interaction
       handleMagnetActivation();
+
+      //score updates
+      points += (dt*SPEEDUP)/(60*1000)*POINTS_SPEC.livingPenalty;
+      $s('#score').innerHTML = Math.round(points);
+
+      //game went on too long
+      if (globalTime > MAX_TIME) {
+        gameOver = true;
+        return handleEndBehavior();
+      }
 
       requestAnimationFrame(render);
     }
