@@ -1,5 +1,10 @@
 body {
-  background: #ECEDF1;
+  background: #F9FCFF;
+}
+
+h1 {
+  margin-top: 1em;
+  text-align: center;
 }
 
 .canvas-container {
@@ -8,8 +13,40 @@ body {
 
 canvas#canvas {
   box-shadow: 4px 4px 6px #898989;
+  margin-top: 0.5em;
 }
 
 hr.bottom {
   margin: 0.75rem 0;
+}
+
+.info {
+  text-align: center;
+}
+
+a.btn {
+  padding: 4px;
+  border-radius: 4px;
+  background-color: #3BB023;
+  color: white;
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer
+}
+a.btn:hover {
+  background-color: #34A61E;
+}
+a.btn:active {
+  background-color: #24960E;
+}
+
+a#play-again-btn {
+  width: 100%;
+  display: block;
+}
+
+footer {
+  text-align: center;
+  font-size: 0.75em;
+  color: #888888;
 }
