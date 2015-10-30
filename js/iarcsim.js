@@ -1,9 +1,9 @@
 /******************\
 | IARC Simulation  |
 | @author Anthony  |
-| @version 0.2.0.1 |
+| @version 1.0     |
 | @date 2015/10/24 |
-| @edit 2015/10/26 |
+| @edit 2015/10/29 |
 \******************/
 
 var IARCSim = (function() {
