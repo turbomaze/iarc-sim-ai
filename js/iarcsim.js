@@ -13,31 +13,44 @@ var IARCSim = (function() {
      * config */
     var DIMS = [500, 0];
         DIMS[1] = DIMS[0]; //force squareness
-    var SPEEDUP = 2;
+    var NUM_GRID_LINES = [20, 20]; //how many grid lines to draw in each dir
+    var SPEEDUP = 70.5;
+    var MAX_TIME = 10*60*1000; //in ms
 
-    var UAV_R = 0.0255*DIMS[0]; //arbitrary size of the uav
-    var UAV_S = 0.15*DIMS[0]*SPEEDUP; //arbitrary speed of the uav
-
-    var N = 10; //number of roombas
-    var R = 0.0085*DIMS[0]; //radius of the Roombas
-    var S = 0.0165*DIMS[0]*SPEEDUP; //speed in px per second
-    var INIT_D = 0.05*500; //how far the roombas are initially
-    var ANG_SPEED = 1.38*SPEEDUP; //angular speed in radians per second
-    var FLIP_FREQ = 20*1000/SPEEDUP; //rotates 180 degrees every 20s
-    var RAND_ANG_FREQ = 5*1000/SPEEDUP; //rotates randomly every 5s
-    var DTHETA = 40*Math.PI/180; //how much it wiggles by for random rotations
-    var ACT_ANGLE = 45*Math.PI/180; //how much it rotates upon activation
-
-    var OBST_N = 4; //number of obstacle roombas
-    var OBST_R = 1.5*R; //radius of the obstacle roombas
-    var OBST_S = S; //speed of the obstacle roombas
-    var OBST_INIT_D = 0.25*DIMS[0];
-    var OBST_ANG_SPEED = 1.38*SPEEDUP; //angular speed in radians per second
+    var UAV_SPEC = {
+      R: 0.0255*DIMS[0], //arbitrary size of the uav
+      S: 0.15*DIMS[0]*SPEEDUP //arbitrary speed of the uav
+    };
+    var ROOMBA_SPEC = {
+      N: 10, //number of roombas
+      R: 0.0085*DIMS[0], //radius of the Roombas
+      S: 0.0165*DIMS[0]*SPEEDUP, //speed in px per second
+      initD: 0.05*500, //how far the roombas are initially
+      angSpd: 1.38*SPEEDUP, //angular speed in radians per second
+      flipFreq: 20*1000/SPEEDUP, //rotates 180 degrees every 20s
+      randAngFreq: 5*1000/SPEEDUP, //rotates randomly every 5s
+      randAngMag: 40*Math.PI/180, //how much it wiggles by for random rotations
+      actAngle: 45*Math.PI/180 //how much it rotates upon activation
+    };
+    var OBST_SPEC = {
+      N: 4, //number of obstacle roombas
+      R: 1.5*ROOMBA_SPEC.R, //radius of the obstacle roombas
+      S: ROOMBA_SPEC.S, //speed of the obstacle roombas
+      initD: 0.25*DIMS[0],
+      angSpd: 1.38*SPEEDUP //angular speed in radians per second
+    };
+    var POINTS_SPEC = {
+      initScore: 12000,
+      goal: 2000,
+      miss: -1000,
+      livingPenalty: -100, //per minute
+    };
 
     /****************
      * working vars */
     var canvas, ctx;
     var uav, roombas, obstacles;
+    var points, gameOver;
     var globalTime;
     var lastRenderTime;
     var keys;
@@ -52,8 +65,8 @@ var IARCSim = (function() {
       this.position = pos.slice(0);
       this.color = color;
       this.direc = [0, 0];
-      this.r = UAV_R;
-      this.s = UAV_S;
+      this.r = UAV_SPEC.R;
+      this.s = UAV_SPEC.S;
     }
     UAV.prototype.move = function(dt) {
       //get the direction from the pressed keys
@@ -79,8 +92,8 @@ var IARCSim = (function() {
         this.position[0] - CENTER[0],
         this.position[1] - CENTER[1]
       ]);
-      this.r = R; //radius
-      this.s = S; //speed
+      this.r = ROOMBA_SPEC.R; //radius
+      this.s = ROOMBA_SPEC.S; //speed
 
       this.t1 = 0; //time since last flip
       this.t2 = 0; //time since last wiggle
@@ -89,12 +102,12 @@ var IARCSim = (function() {
     Roomba.prototype.update = function(dt) {
       this.move(dt);
       this.t1 += dt;
-      if (this.t1 > RAND_ANG_FREQ) {
+      if (this.t1 > ROOMBA_SPEC.randAngFreq) {
         this.t1 = 0;
         this.randomizeAngle();
       }
       this.t2 += dt;
-      if (this.t2 > FLIP_FREQ) {
+      if (this.t2 > ROOMBA_SPEC.flipFreq) {
         this.t2 = 0;
         this.flip();
       }
@@ -113,7 +126,7 @@ var IARCSim = (function() {
         this.position[0] += ds * this.direc[0];
         this.position[1] += ds * this.direc[1];
       } else {
-        var dtheta = ANG_SPEED * dt/1000;
+        var dtheta = ROOMBA_SPEC.angSpd * dt/1000;
         this.rotateByAngle(dtheta);
         this.angleLeftToMove -= dtheta;
         if (this.angleLeftToMove < 0) this.angleLeftToMove = 0;
@@ -123,7 +136,8 @@ var IARCSim = (function() {
       this.queueRotation(Math.PI);
     };
     Roomba.prototype.randomizeAngle = function() {
-      var thetaChange = -DTHETA/2 + DTHETA*Math.random();
+      var thetaChange = -ROOMBA_SPEC.randAngMag/2;
+      thetaChange += ROOMBA_SPEC.randAngMag*Math.random();
       this.rotateByAngle(thetaChange);
     };
     Roomba.prototype.distTo = function(ent) {
@@ -144,7 +158,7 @@ var IARCSim = (function() {
       roomba.rotateByAngle(Math.PI); //undo the rotation
     };
     Roomba.prototype.activateMagnet = function() {
-      this.queueRotation(ACT_ANGLE);
+      this.queueRotation(ROOMBA_SPEC.actAngle);
     };
 
     function ObstacleRoomba(pos, color) {
@@ -154,14 +168,14 @@ var IARCSim = (function() {
         -this.position[1] + CENTER[1],
         this.position[0] - CENTER[0]
       ]); //perpendicular to initial position vector, clockwise
-      this.r = OBST_R; //radius
-      this.s = OBST_S; //speed
+      this.r = OBST_SPEC.R; //radius
+      this.s = OBST_SPEC.S; //speed
 
       this.angleLeftToMove = 0; //angle to pretend to rotate for synchronicity
     }
     ObstacleRoomba.prototype.move = function(dt) {
       if (this.angleLeftToMove !== 0) {
-        var shadowTheta = OBST_ANG_SPEED * dt/1000;
+        var shadowTheta = OBST_SPEC.angSpd * dt/1000;
         this.angleLeftToMove -= shadowTheta;
         if (this.angleLeftToMove < 0) this.angleLeftToMove = 0;
       } else {
@@ -169,14 +183,14 @@ var IARCSim = (function() {
           this.position[1] - CENTER[1],
           this.position[0] - CENTER[0]
         );
-        var dtheta = (OBST_S/OBST_INIT_D) * dt/1000;
+        var dtheta = (OBST_SPEC.S/OBST_SPEC.initD) * dt/1000;
         this.direc = [
           -Math.sin(theta+dtheta),
           Math.cos(theta+dtheta)
         ];
         this.position = [
-          OBST_INIT_D*this.direc[1] + CENTER[1],
-          -OBST_INIT_D*this.direc[0] + CENTER[0]
+          OBST_SPEC.initD*this.direc[1] + CENTER[1],
+          -OBST_SPEC.initD*this.direc[0] + CENTER[0]
         ];
       }
     };
@@ -211,6 +225,29 @@ var IARCSim = (function() {
       canvas.height = DIMS[1];
       ctx = canvas.getContext('2d');
 
+      //init starting conditions
+      initGameState();
+
+      //controls
+      keys = [];
+      window.addEventListener('keydown', function(e) {
+        if (e.keyCode === 32) return;
+        keys[e.keyCode] = true;
+      });
+      window.addEventListener('keyup', function(e) {
+        keys[e.keyCode] = false;
+        if (e.keyCode === 32) keys[e.keyCode] = true; //reversed
+      });
+      $s('#play-again-btn').addEventListener('click', function() {
+        gameOver = false;
+        initGameState();
+        render();
+      });
+
+      render();
+    }
+
+    function initGameState() {
       //uav initialization
       uav = new UAV(
         CENTER,
@@ -223,10 +260,10 @@ var IARCSim = (function() {
 
       //roomba initialization
       roombas = [];
-      for (var ai = 0; ai < N; ai++) {
-        var theta = ai*(2*Math.PI/N);
-        var x = INIT_D*Math.cos(theta);
-        var y = INIT_D*Math.sin(theta);
+      for (var ai = 0; ai < ROOMBA_SPEC.N; ai++) {
+        var theta = ai*(2*Math.PI/ROOMBA_SPEC.N);
+        var x = ROOMBA_SPEC.initD*Math.cos(theta);
+        var y = ROOMBA_SPEC.initD*Math.sin(theta);
         roombas.push(
           new Roomba(
             [CENTER[0]+x, CENTER[1]+y],
@@ -241,10 +278,10 @@ var IARCSim = (function() {
 
       //obstacle init
       obstacles = [];
-      for (var ai = 0; ai < OBST_N; ai++) {
-        var theta = ai*(2*Math.PI/OBST_N);
-        var x = OBST_INIT_D*Math.cos(theta);
-        var y = OBST_INIT_D*Math.sin(theta);
+      for (var ai = 0; ai < OBST_SPEC.N; ai++) {
+        var theta = ai*(2*Math.PI/OBST_SPEC.N);
+        var x = OBST_SPEC.initD*Math.cos(theta);
+        var y = OBST_SPEC.initD*Math.sin(theta);
         obstacles.push(
           new ObstacleRoomba(
             [CENTER[0]+x, CENTER[1]+y],
@@ -259,18 +296,10 @@ var IARCSim = (function() {
       $s('#t').innerHTML = fmtTime(0, 0);
       $s('#num-robots').innerHTML = roombas.length;
 
-      //controls
-      keys = [];
-      window.addEventListener('keydown', function(e) {
-        if (e.keyCode === 32) return;
-        keys[e.keyCode] = true;
-      });
-      window.addEventListener('keyup', function(e) {
-        keys[e.keyCode] = false;
-        if (e.keyCode === 32) keys[e.keyCode] = true; //reversed
-      });
-
-      render();
+      //misc
+      points = POINTS_SPEC.initScore; //arbitrary initial score
+      gameOver = false;
+      $s('#play-again-btn-cont').style.display = 'none'; //hide it
     }
 
     function handleRoombaCollisions() {
@@ -298,10 +327,18 @@ var IARCSim = (function() {
 
     function handleExitBehavior() {
       for (var ai = 0; ai < roombas.length; ai++) {
-        if (roombas[ai].position[0] < roombas[ai].r ||
-            roombas[ai].position[0] > DIMS[0]-roombas[ai].r ||
-            roombas[ai].position[1] < roombas[ai].r ||
-            roombas[ai].position[1] > DIMS[1]-roombas[ai].r) {
+        //if a roomba leaves any of the edges, remove the roomba
+        if (roombas[ai].position[0] < 0 || roombas[ai].position[0] > DIMS[0] ||
+            roombas[ai].position[1] < 0 || roombas[ai].position[1] > DIMS[1]) {
+          //special goal edge
+          if (roombas[ai].position[1] < 0) {
+            //make sure you negate the previous miss deduction!
+            points += POINTS_SPEC.goal;
+          } else {
+            points += POINTS_SPEC.miss;
+          }
+
+          //remove it
           roombas.splice(ai, 1);
           $s('#num-robots').innerHTML = roombas.length;
           ai--; //it'll get incremented and ai will remain the same
@@ -335,8 +372,13 @@ var IARCSim = (function() {
       }
     }
 
+    function handleEndBehavior() {
+      Crush.clear(ctx, 'rgba(0, 0, 0, 0.3)');
+      $s('#play-again-btn-cont').style.display = 'block';
+    }
+
     function render() {
-      clearCanvas();
+      if (gameOver) return;
 
       //deal with time
       var t = +new Date();
@@ -344,6 +386,19 @@ var IARCSim = (function() {
       lastRenderTime = t;
       globalTime += dt*SPEEDUP;
       $s('#t').innerHTML = fmtTime(globalTime);
+
+      //score updates
+      points += (dt*SPEEDUP)/(60*1000)*POINTS_SPEC.livingPenalty;
+      $s('#score').innerHTML = Math.round(points);
+
+      //game went on too long
+      if (globalTime > MAX_TIME) {
+        gameOver = true;
+        return handleEndBehavior();
+      }
+
+      //draw the board
+      drawBoard();
 
       //draw the roomba positions
       roombas.map(drawEntity);
@@ -405,6 +460,26 @@ var IARCSim = (function() {
       });
     }
 
+    function drawBoard() {
+      Crush.clear(ctx, 'white');
+
+      //draw the grid
+      var thk = 2; //thickness in px
+      ctx.fillStyle = '#F3F3F3';
+      var xInc = (DIMS[0] - thk)/(NUM_GRID_LINES[0]-1);
+      for (var ai = 0; ai < NUM_GRID_LINES[0]; ai++) {
+        ctx.fillRect(ai*xInc, 0, thk, DIMS[1]);
+    	}
+      var yInc = (DIMS[1] - thk)/(NUM_GRID_LINES[1]-1);
+      for (var ai = 0; ai < NUM_GRID_LINES[1]; ai++) {
+        ctx.fillRect(0, ai*yInc, DIMS[0], thk);
+    	}
+
+      //draw the goal
+      ctx.fillStyle = '#72DE2A';
+      ctx.fillRect(0, 0, DIMS[0], 2*thk);
+    }
+
     function drawEntity(ent) {
       //represent the Roomba
       Crush.drawPoint(ctx, ent.position, ent.r, ent.color);
@@ -415,20 +490,13 @@ var IARCSim = (function() {
       ], ent.color, 2);
     }
 
-    function clearCanvas() {
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-
     function $s(id) { //for convenience
       if (id.charAt(0) !== '#') return false;
       return document.getElementById(id.substring(1));
     }
 
     return {
-      init: initIARCSim,
-      render: render,
-      obstacles: obstacles
+      init: initIARCSim
     };
 })();
 
