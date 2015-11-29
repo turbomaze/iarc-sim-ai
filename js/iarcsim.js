@@ -22,7 +22,7 @@ var IARCSim = (function() {
       S: 0.15*DIMS[0]*SPEEDUP //arbitrary speed of the uav
     };
     var ROOMBA_SPEC = {
-      N: 10, //number of roombas
+      N: 1, //number of roombas
       R: 0.0085*DIMS[0], //radius of the Roombas
       S: 0.0165*DIMS[0]*SPEEDUP, //speed in px per second
       initD: 0.05*500, //how far the roombas are initially
@@ -50,7 +50,7 @@ var IARCSim = (function() {
      * working vars */
     var canvas, ctx;
     var uav, roombas, obstacles;
-    var points, gameOver;
+    var points, cumRwd, gameOver;
     var globalTime;
     var lastRenderTime;
     var keys;
@@ -298,6 +298,9 @@ var IARCSim = (function() {
 
       //misc
       points = POINTS_SPEC.initScore; //arbitrary initial score
+      cumRwd = 0;
+      $s('#rwd').innerHTML = '0';
+      $s('#cum-rwd').innerHTML = '0';
       gameOver = false;
       $s('#play-again-btn-cont').style.display = 'none'; //hide it
     }
@@ -392,6 +395,23 @@ var IARCSim = (function() {
       $s('#play-again-btn-cont').style.display = 'block';
     }
 
+    function getReward() {
+      return roombas.reduce(function(total, roomba) {
+        //reward proximity to goal line
+        var contr = Math.pow(DIMS[1] - roomba.position[1], 2)/Math.pow(DIMS[0], 2);
+        //penalize distance from center
+        contr -= Math.pow(roomba.position[0] - CENTER[0], 2)/Math.pow(CENTER[0], 2);
+        //flip sign of reward every so often
+        var k = Math.cos(Math.atan2(
+          roomba.position[1] - CENTER[1],
+          roomba.position[0] - CENTER[0]
+        ));
+        contr += k*Math.pow(-1, Math.floor(globalTime/(10*1000))%2);
+
+        return total + contr;
+      }, 0);
+    }
+
     function render() {
       if (gameOver) return;
 
@@ -401,6 +421,12 @@ var IARCSim = (function() {
       lastRenderTime = t;
       globalTime += dt*SPEEDUP;
       $s('#t').innerHTML = fmtTime(globalTime);
+
+      //deal with reward
+      var rwd = getReward();
+      cumRwd += rwd;
+      $s('#rwd').innerHTML = Math.round(100*rwd)/100;
+      $s('#cum-rwd').innerHTML = Math.round(100*cumRwd)/100;
 
       //draw the board
       drawBoard();
