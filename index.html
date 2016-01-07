@@ -2,11 +2,12 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>IARC Simulation</title>
+        <title>IARC Simulation AI</title>
 
         <link rel="stylesheet" type="text/css" href="css/toast.css">
         <link rel="stylesheet" type="text/css" href="css/style.css">
 
+        <script src="js/rl.js"></script>
         <script src="js/canvashelpers.js"></script>
         <script src="js/iarcsim.js"></script>
     </head>
@@ -27,6 +28,12 @@
           </div>
           <div class="unit one-of-three info">
             Score: <span id="score"></span>
+          </div>
+          <div class="unit one-of-two info">
+            Reward: <span id="rwd"></span>
+          </div>
+          <div class="unit one-of-two info">
+            Cumulative: <span id="cum-rwd"></span>
           </div>
 
           <div class="unit span-grid" id="play-again-btn-cont">
