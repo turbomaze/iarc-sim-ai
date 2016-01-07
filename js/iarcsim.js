@@ -1,10 +1,10 @@
-/******************\
-| IARC Simulation  |
-| @author Anthony  |
-| @version 1.0     |
-| @date 2015/10/24 |
-| @edit 2015/10/29 |
-\******************/
+/********************\
+| IARC Simulation AI |
+| @author Anthony    |
+| @version 1.0       |
+| @date 2015/10/24   |
+| @edit 2016/01/07   |
+\********************/
 
 var IARCSim = (function() {
     'use strict';
@@ -22,7 +22,7 @@ var IARCSim = (function() {
       S: 0.15*DIMS[0]*SPEEDUP //arbitrary speed of the uav
     };
     var ROOMBA_SPEC = {
-      N: 1, //number of roombas
+      N: 10, //number of roombas
       R: 0.0085*DIMS[0], //radius of the Roombas
       S: 0.0165*DIMS[0]*SPEEDUP, //speed in px per second
       initD: 0.05*500, //how far the roombas are initially
@@ -45,6 +45,13 @@ var IARCSim = (function() {
       miss: -1000,
       livingPenalty: -100, //per minute
     };
+    var RL_RWD = {
+      goal: 10,
+      earlyExit: -10,
+      successfulActivation: 1,
+      costOfLiving: -0.1
+    };
+    var NUM_STATES = 2 + 4*(ROOMBA_SPEC.N + OBST_SPEC.N);
 
     /****************
      * working vars */
@@ -53,7 +60,8 @@ var IARCSim = (function() {
     var points, cumRwd, gameOver;
     var globalTime;
     var lastRenderTime;
-    var keys;
+
+    var env, spec, agent;
 
     /*************
      * constants */
@@ -68,13 +76,12 @@ var IARCSim = (function() {
       this.r = UAV_SPEC.R;
       this.s = UAV_SPEC.S;
     }
-    UAV.prototype.move = function(dt) {
-      //get the direction from the pressed keys
+    UAV.prototype.move = function(dirToMove, dt) {
       var dir = [0, 0];
-      if (keys[65]) dir = [dir[0]-1, dir[1]];
-      if (keys[68]) dir = [dir[0]+1, dir[1]];
-      if (keys[87]) dir = [dir[0], dir[1]-1];
-      if (keys[83]) dir = [dir[0], dir[1]+1];
+      if (dirToMove === 0) dir = [dir[0]-1, dir[1]];
+      if (dirToMove === 1) dir = [dir[0]+1, dir[1]];
+      if (dirToMove === 2) dir = [dir[0], dir[1]-1];
+      if (dirToMove === 3) dir = [dir[0], dir[1]+1];
       dir = norm(dir);
       if (dir[0] === 0 && dir[1] === 0) return;
 
@@ -83,6 +90,8 @@ var IARCSim = (function() {
       this.direc = dir.slice(0);
       this.position[0] += ds * this.direc[0];
       this.position[1] += ds * this.direc[1];
+
+      
     };
 
     function Roomba(pos, color) {
@@ -229,20 +238,18 @@ var IARCSim = (function() {
       initGameState();
 
       //controls
-      keys = [];
-      window.addEventListener('keydown', function(e) {
-        if (e.keyCode === 32) return;
-        keys[e.keyCode] = true;
-      });
-      window.addEventListener('keyup', function(e) {
-        keys[e.keyCode] = false;
-        if (e.keyCode === 32) keys[e.keyCode] = true; //reversed
-      });
       $s('#play-again-btn').addEventListener('click', function() {
         gameOver = false;
         initGameState();
         render();
       });
+
+      //init the reinforcement learner
+      env = {};
+      env.getNumStates = function() { return NUM_STATES; };
+      env.getMaxNumActions = function() { return 6; };
+      spec = {alpha: 0.1}; 
+      agent = new RL.DQNAgent(env, spec);
 
       render();
     }
@@ -344,6 +351,7 @@ var IARCSim = (function() {
     }
 
     function handleExitBehavior() {
+      var netRwdFromExits = 0;
       for (var ai = 0; ai < roombas.length; ai++) {
         //if a roomba leaves any of the edges, remove the roomba
         if (roombas[ai].position[0] < 0 || roombas[ai].position[0] > DIMS[0] ||
@@ -352,8 +360,10 @@ var IARCSim = (function() {
           if (roombas[ai].position[1] < 0) {
             //make sure you negate the previous miss deduction!
             points += POINTS_SPEC.goal;
+            netRwdFromExits += RL_RWD.goal;
           } else {
             points += POINTS_SPEC.miss;
+            netRwdFromExits -= RL_RWD.earlyExit;
           }
 
           //remove it
@@ -362,37 +372,44 @@ var IARCSim = (function() {
           ai--; //it'll get incremented and ai will remain the same
         }
       }
+      return netRwdFromExits;
     }
 
-    function handleMagnetActivation() {
-      if (keys[32]) {
-        //prevent this from happening many times during a key-hold
-        keys[32] = false;
+    function attemptMagnetActivation() {
+      var actRwd = 0;
 
-        //get the closest roomba
-        var closestRoomba = roombas.reduce(
-          function(closest, curr, idx) {
-            var dist = mag([
-              curr.position[0] - uav.position[0],
-              curr.position[1] - uav.position[1]
-            ]);
-            if (dist < closest[1]) return [idx, dist];
-            else return closest;
-          },
-          [-1, Infinity] //idx of closest, distance
-        );
+      //get the closest roomba
+      var closestRoomba = roombas.reduce(
+        function(closest, curr, idx) {
+          var dist = mag([
+            curr.position[0] - uav.position[0],
+            curr.position[1] - uav.position[1]
+          ]);
+          if (dist < closest[1]) return [idx, dist];
+          else return closest;
+        },
+        [-1, Infinity] //idx of closest, distance
+      );
 
-        //make sure the closest is close enough
-        if (closestRoomba[1] < Math.abs(uav.r - roombas[closestRoomba[0]].r)) {
-          //if it is, rotate it
-          roombas[closestRoomba[0]].activateMagnet();
-        }
+      //make sure the closest is close enough
+      if (closestRoomba[1] < Math.abs(uav.r - roombas[closestRoomba[0]].r)) {
+        //if it is, rotate it
+        roombas[closestRoomba[0]].activateMagnet();
+        actRwd += RL_RWD.successfulActivation;
       }
+
+      return actRwd;
     }
 
     function handleEndBehavior() {
+      console.log('Game ended');
+
       Crush.clear(ctx, 'rgba(0, 0, 0, 0.3)');
       $s('#play-again-btn-cont').style.display = 'block';
+
+      //just restart the game immediately
+      initGameState();
+      render();
     }
 
     function getReward() {
@@ -408,8 +425,19 @@ var IARCSim = (function() {
         ));
         contr += k*Math.pow(-1, Math.floor(globalTime/(10*1000))%2);
 
-        return total + contr;
+        //return total + contr;
+        return RL_RWD.costOfLiving;
       }, 0);
+    }
+
+    function handleUAVExit() {
+      //exiting is bad
+      if (uav.position[0] < 0 || uav.position[0] > DIMS[0] ||
+          uav.position[1] < 0 || uav.position[1] > DIMS[1]) {
+        return RL_RWD.earlyExit;
+      } else {
+        return 0;
+      }
     }
 
     function render() {
@@ -422,11 +450,8 @@ var IARCSim = (function() {
       globalTime += dt*SPEEDUP;
       $s('#t').innerHTML = fmtTime(globalTime);
 
-      //deal with reward
-      var rwd = getReward();
-      cumRwd += rwd;
-      $s('#rwd').innerHTML = Math.round(100*rwd)/100;
-      $s('#cum-rwd').innerHTML = Math.round(100*cumRwd)/100;
+      //init rwd to 0
+      var rwd = 0;
 
       //draw the board
       drawBoard();
@@ -460,25 +485,81 @@ var IARCSim = (function() {
       });
 
       //remove the roombas that've crossed the wall
-      handleExitBehavior();
+      rwd += handleExitBehavior();
 
-      //move the UAV
-      uav.move(dt);
-
-      //uav-roomba interaction
-      handleMagnetActivation();
+      //get the action
+      var state = getState();
+      var action = agent.act(state);
+      console.log(action);
+      
+      //perform the action
+      if (action < 4) {
+        //move the UAV
+        uav.move(action, dt);
+        var exitRwd = handleUAVExit();
+        rwd += exitRwd;
+        if (exitRwd < 0) {
+          gameOver = true;
+          agent.learn(RL_RWD.earlyExit);
+          return handleEndBehavior();
+        }
+      } else if (action === 4) {
+        //uav-roomba interaction
+        rwd += attemptMagnetActivation();
+      }
 
       //score updates
       points += (dt*SPEEDUP)/(60*1000)*POINTS_SPEC.livingPenalty;
       $s('#score').innerHTML = Math.round(points);
 
+      //deal with reward
+      rwd += getReward(); //reward due to heuristics and cost of living
+      cumRwd += rwd;
+      $s('#rwd').innerHTML = Math.round(100*rwd)/100;
+      $s('#cum-rwd').innerHTML = Math.round(100*cumRwd)/100;
+
       //game went on too long
       if (globalTime > MAX_TIME) {
         gameOver = true;
+        agent.learn(RL_RWD.earlyExit);
         return handleEndBehavior();
+      } else {
+        agent.learn(rwd);
       }
 
       requestAnimationFrame(render);
+    }
+    
+    function getState() {
+      var state = [];
+      state.push(uav.position[0]);
+      state.push(uav.position[1]);
+
+      obstacles.map(function(obstacle) {
+        state.push(obstacle.position[0]);
+        state.push(obstacle.position[1]);
+        if (obstacle.angleLeftToMove === 0) {
+          state.push(obstacle.direc[0]);
+          state.push(obstacle.direc[1]);
+        } else {
+          state.push(0);
+          state.push(0);
+        }
+      });
+
+      roombas.map(function(roomba) {
+        state.push(roomba.position[0]);
+        state.push(roomba.position[1]);
+        if (roomba.angleLeftToMove === 0) {
+          state.push(roomba.direc[0]);
+          state.push(roomba.direc[1]);
+        } else {
+          state.push(0);
+          state.push(0);
+        }
+      });
+
+      return state;
     }
 
     /********************
