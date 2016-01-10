@@ -406,7 +406,7 @@ var IARCSim = (function() {
 
       Crush.clear(ctx, 'rgba(0, 0, 0, 0.3)');
       $s('#play-again-btn-cont').style.display = 'block';
-
+      
       //just restart the game immediately
       initGameState();
       render();
@@ -490,7 +490,6 @@ var IARCSim = (function() {
       //get the action
       var state = getState();
       var action = agent.act(state);
-      console.log(action);
       
       //perform the action
       if (action < 4) {
@@ -532,12 +531,12 @@ var IARCSim = (function() {
     
     function getState() {
       var state = [];
-      state.push(uav.position[0]);
-      state.push(uav.position[1]);
+      state.push(uav.position[0]/DIMS[0]);
+      state.push(uav.position[1]/DIMS[1]);
 
       obstacles.map(function(obstacle) {
-        state.push(obstacle.position[0]);
-        state.push(obstacle.position[1]);
+        state.push(obstacle.position[0]/DIMS[0]);
+        state.push(obstacle.position[1]/DIMS[1]);
         if (obstacle.angleLeftToMove === 0) {
           state.push(obstacle.direc[0]);
           state.push(obstacle.direc[1]);
@@ -548,8 +547,8 @@ var IARCSim = (function() {
       });
 
       roombas.map(function(roomba) {
-        state.push(roomba.position[0]);
-        state.push(roomba.position[1]);
+        state.push(roomba.position[0]/DIMS[0]);
+        state.push(roomba.position[1]/DIMS[1]);
         if (roomba.angleLeftToMove === 0) {
           state.push(roomba.direc[0]);
           state.push(roomba.direc[1]);
