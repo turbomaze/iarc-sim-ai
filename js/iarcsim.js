@@ -3,7 +3,7 @@
 | @author Anthony    |
 | @version 1.0       |
 | @date 2015/10/24   |
-| @edit 2016/01/07   |
+| @edit 2016/01/24   |
 \********************/
 
 var IARCSim = (function() {
@@ -426,6 +426,8 @@ var IARCSim = (function() {
         [-1, Infinity] //idx of closest, distance
       );
 
+      if (closestRoomba[0] === -1) return 0;
+
       //make sure the closest is close enough
       if (closestRoomba[1] < Math.abs(uav.r - roombas[closestRoomba[0]].r)) {
         //if it is, rotate it
@@ -511,6 +513,12 @@ var IARCSim = (function() {
       }).map(function(roomba) {
         roomba.update(dt);
       });
+
+      //handle no more roombas case
+      if (roombas.filter(function(r){return r.active}).length === 0) {
+        gameOver = true;
+        return handleEndBehavior();
+      }
 
       //obstacle velocity updates
       obstacles.map(function(obstacle) {
