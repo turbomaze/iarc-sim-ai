@@ -3,7 +3,7 @@
 | @author Anthony    |
 | @version 1.0       |
 | @date 2015/10/24   |
-| @edit 2016/01/07   |
+| @edit 2016/01/24   |
 \********************/
 
 var IARCSim = (function() {
@@ -76,12 +76,16 @@ var IARCSim = (function() {
       this.r = UAV_SPEC.R;
       this.s = UAV_SPEC.S;
     }
-    UAV.prototype.move = function(dirToMove, dt) {
-      var dir = [0, 0];
-      if (dirToMove === 0) dir = [dir[0]-1, dir[1]];
-      if (dirToMove === 1) dir = [dir[0]+1, dir[1]];
-      if (dirToMove === 2) dir = [dir[0], dir[1]-1];
-      if (dirToMove === 3) dir = [dir[0], dir[1]+1];
+    UAV.prototype.move = function(action, dt) {
+      if (action < 2 || action > roombas.length + 2) return;
+
+      var roombaIdx = action - 2;
+      var roomba = roombas[roombaIdx];
+      if (!roomba.active) return;
+      var dir = [
+        roomba.position[0] - this.position[0],
+        roomba.position[1] - this.position[1]
+      ];
       dir = norm(dir);
       if (dir[0] === 0 && dir[1] === 0) return;
 
@@ -90,8 +94,6 @@ var IARCSim = (function() {
       this.direc = dir.slice(0);
       this.position[0] += ds * this.direc[0];
       this.position[1] += ds * this.direc[1];
-
-      
     };
 
     function Roomba(pos, color) {
@@ -107,8 +109,11 @@ var IARCSim = (function() {
       this.t1 = 0; //time since last flip
       this.t2 = 0; //time since last wiggle
       this.angleLeftToMove = 0; //how much this UAV needs to rotate
+      this.active = true; //whether or not it's still in play
     }
     Roomba.prototype.update = function(dt) {
+      if (!this.active) return;
+
       this.move(dt);
       this.t1 += dt;
       if (this.t1 > ROOMBA_SPEC.randAngFreq) {
@@ -122,14 +127,20 @@ var IARCSim = (function() {
       }
     };
     Roomba.prototype.rotateByAngle = function(theta) {
+      if (!this.active) return;
+
       var currAng = Math.atan2(this.direc[1], this.direc[0]);
       this.direc[0] = Math.cos(currAng + theta);
       this.direc[1] = Math.sin(currAng + theta);
     };
     Roomba.prototype.queueRotation = function(theta) {
+      if (!this.active) return;
+
       this.angleLeftToMove = (this.angleLeftToMove+theta)%(2*Math.PI);
     };
     Roomba.prototype.move = function(dt, forceTranslation) {
+      if (!this.active) return;
+
       if (this.angleLeftToMove === 0 || forceTranslation) {
         var ds = this.s * dt/1000;
         this.position[0] += ds * this.direc[0];
@@ -142,9 +153,13 @@ var IARCSim = (function() {
       }
     };
     Roomba.prototype.flip = function() {
+      if (!this.active) return;
+
       this.queueRotation(Math.PI);
     };
     Roomba.prototype.randomizeAngle = function() {
+      if (!this.active) return;
+
       var thetaChange = -ROOMBA_SPEC.randAngMag/2;
       thetaChange += ROOMBA_SPEC.randAngMag*Math.random();
       this.rotateByAngle(thetaChange);
@@ -156,6 +171,8 @@ var IARCSim = (function() {
       ]);
     };
     Roomba.prototype.collideWith = function(roomba) {
+      if (!this.active) return;
+
       this.flip();
       this.rotateByAngle(Math.PI);
       this.move(1000/60, true); //assume 60fps
@@ -167,7 +184,15 @@ var IARCSim = (function() {
       roomba.rotateByAngle(Math.PI); //undo the rotation
     };
     Roomba.prototype.activateMagnet = function() {
+      if (!this.active) return;
+
       this.queueRotation(ROOMBA_SPEC.actAngle);
+    };
+    Roomba.prototype.deactivate = function() { //remove it from play
+      this.active = false;
+      this.position = [0, 0];
+      this.direc = [0, 0];
+      this.angleLeftToMove = 0;
     };
 
     function ObstacleRoomba(pos, color) {
@@ -247,7 +272,7 @@ var IARCSim = (function() {
       //init the reinforcement learner
       env = {};
       env.getNumStates = function() { return NUM_STATES; };
-      env.getMaxNumActions = function() { return 6; };
+      env.getMaxNumActions = function() { return 2 + ROOMBA_SPEC.N; };
       spec = {alpha: 0.1}; 
       agent = new RL.DQNAgent(env, spec);
 
@@ -314,7 +339,11 @@ var IARCSim = (function() {
 
     function handleRoombaRoombaCollisions() {
       for (var ai = 0; ai < roombas.length; ai++) {
+        if (!roombas[ai].active) continue;
+
         for (var bi = ai+1; bi < roombas.length; bi++) {
+          if (!roombas[bi].active) continue;
+
           //collisions
           if (roombas[ai].distTo(roombas[bi]) < roombas[ai].r+roombas[bi].r) {
             roombas[ai].collideWith(roombas[bi]);
@@ -327,6 +356,8 @@ var IARCSim = (function() {
       for (var ai = 0; ai < obstacles.length; ai++) {
         var obstacle = obstacles[ai];
         for (var bi = 0; bi < roombas.length; bi++) {
+          if (!roombas[bi].active) continue;
+
           //collisions
           if (roombas[bi].distTo(obstacle) < roombas[bi].r + obstacle.r) {
             obstacle.collideWith(roombas[bi]);
@@ -353,6 +384,8 @@ var IARCSim = (function() {
     function handleExitBehavior() {
       var netRwdFromExits = 0;
       for (var ai = 0; ai < roombas.length; ai++) {
+        if (!roombas[ai].active) continue;
+        
         //if a roomba leaves any of the edges, remove the roomba
         if (roombas[ai].position[0] < 0 || roombas[ai].position[0] > DIMS[0] ||
             roombas[ai].position[1] < 0 || roombas[ai].position[1] > DIMS[1]) {
@@ -367,7 +400,7 @@ var IARCSim = (function() {
           }
 
           //remove it
-          roombas.splice(ai, 1);
+          roombas[ai].deactivate();
           $s('#num-robots').innerHTML = roombas.length;
           ai--; //it'll get incremented and ai will remain the same
         }
@@ -381,6 +414,8 @@ var IARCSim = (function() {
       //get the closest roomba
       var closestRoomba = roombas.reduce(
         function(closest, curr, idx) {
+          if (!curr.active) return closest;
+          
           var dist = mag([
             curr.position[0] - uav.position[0],
             curr.position[1] - uav.position[1]
@@ -390,6 +425,8 @@ var IARCSim = (function() {
         },
         [-1, Infinity] //idx of closest, distance
       );
+
+      if (closestRoomba[0] === -1) return 0;
 
       //make sure the closest is close enough
       if (closestRoomba[1] < Math.abs(uav.r - roombas[closestRoomba[0]].r)) {
@@ -406,28 +443,22 @@ var IARCSim = (function() {
 
       Crush.clear(ctx, 'rgba(0, 0, 0, 0.3)');
       $s('#play-again-btn-cont').style.display = 'block';
-
+      
       //just restart the game immediately
       initGameState();
       render();
     }
 
     function getReward() {
-      return roombas.reduce(function(total, roomba) {
-        //reward proximity to goal line
-        var contr = Math.pow(DIMS[1] - roomba.position[1], 2)/Math.pow(DIMS[0], 2);
-        //penalize distance from center
-        contr -= Math.pow(roomba.position[0] - CENTER[0], 2)/Math.pow(CENTER[0], 2);
-        //flip sign of reward every so often
-        var k = Math.cos(Math.atan2(
-          roomba.position[1] - CENTER[1],
-          roomba.position[0] - CENTER[0]
-        ));
-        contr += k*Math.pow(-1, Math.floor(globalTime/(10*1000))%2);
+      var maxPossibleDistSum = ROOMBA_SPEC.N*Math.sqrt(
+        DIMS[0] * DIMS[0] +
+        DIMS[1] * DIMS[1]
+      );
+      return -roombas.reduce(function(total, roomba) {
+        if (!roomba.active) return total;
 
-        //return total + contr;
-        return RL_RWD.costOfLiving;
-      }, 0);
+        return total + roomba.distTo(uav); 
+      }, 0)/maxPossibleDistSum;
     }
 
     function handleUAVExit() {
@@ -457,7 +488,9 @@ var IARCSim = (function() {
       drawBoard();
 
       //draw the roomba positions
-      roombas.map(drawEntity);
+      roombas.filter(function(roomba) {
+        return roomba.active;  
+      }).map(drawEntity);
 
       //draw the obstacles
       obstacles.map(drawEntity);
@@ -475,9 +508,17 @@ var IARCSim = (function() {
       handleUAVObstacleCollisions();
 
       //roomba velocity updates
-      roombas.map(function(roomba) {
+      roombas.filter(function(roomba) {
+        return roomba.active;  
+      }).map(function(roomba) {
         roomba.update(dt);
       });
+
+      //handle no more roombas case
+      if (roombas.filter(function(r){return r.active}).length === 0) {
+        gameOver = true;
+        return handleEndBehavior();
+      }
 
       //obstacle velocity updates
       obstacles.map(function(obstacle) {
@@ -490,10 +531,9 @@ var IARCSim = (function() {
       //get the action
       var state = getState();
       var action = agent.act(state);
-      console.log(action);
       
       //perform the action
-      if (action < 4) {
+      if (action > 1) {
         //move the UAV
         uav.move(action, dt);
         var exitRwd = handleUAVExit();
@@ -503,7 +543,7 @@ var IARCSim = (function() {
           agent.learn(RL_RWD.earlyExit);
           return handleEndBehavior();
         }
-      } else if (action === 4) {
+      } else if (action === 1) {
         //uav-roomba interaction
         rwd += attemptMagnetActivation();
       }
@@ -532,12 +572,12 @@ var IARCSim = (function() {
     
     function getState() {
       var state = [];
-      state.push(uav.position[0]);
-      state.push(uav.position[1]);
+      state.push(uav.position[0]/DIMS[0]);
+      state.push(uav.position[1]/DIMS[1]);
 
       obstacles.map(function(obstacle) {
-        state.push(obstacle.position[0]);
-        state.push(obstacle.position[1]);
+        state.push(obstacle.position[0]/DIMS[0]);
+        state.push(obstacle.position[1]/DIMS[1]);
         if (obstacle.angleLeftToMove === 0) {
           state.push(obstacle.direc[0]);
           state.push(obstacle.direc[1]);
@@ -548,8 +588,8 @@ var IARCSim = (function() {
       });
 
       roombas.map(function(roomba) {
-        state.push(roomba.position[0]);
-        state.push(roomba.position[1]);
+        state.push(roomba.position[0]/DIMS[0]);
+        state.push(roomba.position[1]/DIMS[1]);
         if (roomba.angleLeftToMove === 0) {
           state.push(roomba.direc[0]);
           state.push(roomba.direc[1]);
